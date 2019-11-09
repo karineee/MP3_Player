@@ -62,6 +62,29 @@ void find_mp3_by_filename(char name[32]) {
 }
 
 
+
+// Player task receives song data over Q_songdata to send it to the MP3 decoder
+void mp3_player_task(void *p) {
+
+  char bytes_512[512];
+
+  while (1) {
+
+    xQueueReceive(Q_songdata, &bytes_512[0], portMAX_DELAY);
+    for (int i = 0; i < sizeof(bytes_512); i++) {
+      while (!mp3_decoder_needs_data()) {
+
+        // Decoder gives signal about needing data for each char
+        // If it doesn't need data, then delay until it needs the next char
+
+        vTaskDelay(1);
+      }
+      spi_send_to_mp3_decoder(bytes_512[i]);
+    }
+  }
+}
+
+
 // While mp3 decoder is empty returns true, otherwise returns false
 void mp3_decoder_needs_data() {
 
