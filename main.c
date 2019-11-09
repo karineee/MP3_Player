@@ -61,20 +61,35 @@ void find_mp3_by_filename(char name[32]) {
   FRESULT result = f_open(&file, name, (FA_READ));
 }
 
-// Player task receives song data over Q_songdata to send it to the MP3 decoder
-void mp3_player_task(void *p) {
-  char bytes_512[512];
 
-  while (1) {
-    xQueueReceive(Q_songdata, &bytes_512[0], portMAX_DELAY);
-    for (int i = 0; i < sizeof(bytes_512); i++) {
-      while (!mp3_decoder_needs_data()) {
-        vTaskDelay(1);
-      }
+// While mp3 decoder is empty returns true, otherwise returns false
+void mp3_decoder_needs_data() {
 
-      spi_send_to_mp3_decoder(bytes_512[i]);
-    }
+  bool decoder_signal = true;
+
+  char data[512];
+
+  if (decoder_signal == false) {
+
+    // While loop: outcome true if it doesn't need data
+
+    return false;
+
+  } else {
+
+    // While loop: outcome false if it needs data
+
+    return true;
   }
 }
+//
+void spi_send_to_mp3_decoder(char bytes[]) {
+
+  int i;
+  char decoder_val = bytes[i];
+
+  // testing
+  fprintf(stderr, "bytes_512: %c", bytes);
+
 
 void end() {}
