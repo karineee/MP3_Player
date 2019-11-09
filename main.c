@@ -5,13 +5,15 @@
 #include "queue.h"
 #include "sj2_cli.h"
 #include "task.h"
-#include <stdio.h>s
+#include <stdio.h>
 
-typedef struct File_contents {
+// Meeting note: parts list Venmo $38.43 per person
+
+typedef struct File {
   char songname[32];
-} File_list;
 
-File_list file;
+} songname;
+
 QueueHandle_t Q_songname;
 QueueHandle_t Q_songdata;
 
@@ -22,6 +24,7 @@ void main(void) {
 
 // Reader tasks receives song-name over Q_songname to start reading it
 void mp3_reader_task(void *p) {
+
   songname name;
   char bytes_512[512];
 
