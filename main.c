@@ -27,6 +27,7 @@ void mp3_reader_task(void *p) {
 
   songname name;
   char bytes_512[512];
+  
 
   while (1) {
     xQueueReceive(Q_songname, &name[0], portMAX_DELAY);
