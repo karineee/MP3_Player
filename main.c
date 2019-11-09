@@ -5,9 +5,7 @@
 #include "queue.h"
 #include "sj2_cli.h"
 #include "task.h"
-#include <stdio.h>
-
-// Meeting note: parts list Venmo $38.43 per person
+#include <stdio.h>s
 
 typedef struct File_contents {
   char songname[32];
