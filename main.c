@@ -7,7 +7,7 @@
 #include "task.h"
 #include <stdio.h>
 
-// Meeting note: parts list Venmo $38.43 per person
+
 
 typedef struct File {
   char songname[32];
