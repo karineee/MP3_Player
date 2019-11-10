@@ -9,6 +9,8 @@
 #include "ff.h"
 #include "sl_string.h"
 
+#include "queue_manager.h" 
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -39,7 +41,7 @@ void mp3_reader_task(void *p) {
 
   while (1) {
     //TODO: IMPLEMENT THESE TWO LINES
-    // xQueueReceive(Q_songname, &name, portMAX_DELAY);
+    // xQueueReceive(SongQueue, &name, portMAX_DELAY);
     // printf("Received song to play: %s\n", name);
 
     const char *testName = "test.mp3";
@@ -138,8 +140,10 @@ void mp3_player_task(void *p) {
 }
 
 void main(void) {
-  Q_songname = xQueueCreate(sizeof(char[32]), 1);
+  SongQueue = xQueueCreate(sizeof(char[32]), 1);
   Q_songdata = xQueueCreate(512, 1);
+
+  sj2_cli__init();
 
   printf("Creating Tasks...\n");
   xTaskCreate(mp3_reader_task, "Reader_Task", (2048U * 8 / sizeof(void *)), NULL, PRIORITY_HIGH, NULL);

@@ -7,4 +7,4 @@
 
 typedef char name[32];
 
-extern QueueHandle_t Song_Q;
+extern QueueHandle_t SongQueue;
