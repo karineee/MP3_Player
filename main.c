@@ -9,8 +9,6 @@
 #include "ff.h"
 #include "sl_string.h"
 
-#include "queue_manager.h" 
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -31,6 +29,13 @@ char fpeek(FILE *stream) {
   return c;
 }
 
+void empty_task(void *p) {
+  while (1) {
+    printf("Waiting in the empty task\n");
+    vTaskDelay(20000);
+  }
+}
+
 // Reader tasks receives song-name over Q_songname to start reading it
 void mp3_reader_task(void *p) {
   char name[32];
@@ -40,18 +45,18 @@ void mp3_reader_task(void *p) {
   printf("Inside the mp3_reader_task \n");
 
   while (1) {
-    //TODO: IMPLEMENT THESE TWO LINES
-    // xQueueReceive(SongQueue, &name, portMAX_DELAY);
-    // printf("Received song to play: %s\n", name);
+    // TODO: IMPLEMENT THESE TWO LINES
+    xQueueReceive(SongQueue, &name, portMAX_DELAY);
+    printf("Received song to play: %s\n", name);
 
     const char *testName = "test.mp3";
-    printf("Testing: %s\n", testName);
+    printf("Testing: %s\n", name);
 
     FILE mp3File; // File handle
-    FRESULT result = f_open(&mp3File, testName, (FA_READ));
+    FRESULT result = f_open(&mp3File, name, (FA_READ));
 
     if (FR_OK == result) {
-      printf("File Found: %s\n", testName);
+      printf("File Found: %s\n", name);
       printf("Begin Queueing File Data!\n\n");
 
       // char c = fpeek(&mp3File);
@@ -97,7 +102,7 @@ void mp3_reader_task(void *p) {
       printf("We read the file and reached the end\n");
       vTaskDelay(5000);
     } else {
-      printf("ERROR: Failed to open: %s\n", testName);
+      printf("ERROR: Failed to open: %s\n", name);
       vTaskDelay(10000);
     }
   }
@@ -140,14 +145,14 @@ void mp3_player_task(void *p) {
 }
 
 void main(void) {
-  SongQueue = xQueueCreate(sizeof(char[32]), 1);
-  Q_songdata = xQueueCreate(512, 1);
+  SongQueue = xQueueCreate(1, sizeof(char[32]));
+  Q_songdata = xQueueCreate(1, sizeof(char[512]));
 
   sj2_cli__init();
 
   printf("Creating Tasks...\n");
   xTaskCreate(mp3_reader_task, "Reader_Task", (2048U * 8 / sizeof(void *)), NULL, PRIORITY_HIGH, NULL);
-  // xTaskCreate(producer, "Producer", (512U / sizeof(void *)), NULL, PRIORITY_LOW, NULL);
+  // xTaskCreate(empty_task, "Empty_Task", (512U / sizeof(void *)), NULL, PRIORITY_LOW, NULL);
 
   printf("Starting scheduler...\n");
   vTaskStartScheduler();
