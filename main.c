@@ -1,13 +1,14 @@
 #include "FreeRTOS.h"
 #include "board_io.h"
 #include "common_macros.h"
+#include "ff.h"
 #include "gpio.h"
+#include "mp3_interface.h"
+
 #include "queue.h"
 #include "sj2_cli.h"
-#include "task.h"
-
-#include "ff.h"
 #include "sl_string.h"
+#include "task.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,19 +131,25 @@ void find_mp3_by_filename(char name[32]) {
 
 // Player task receives song data over Q_songdata to send it to the MP3 decoder
 void mp3_player_task(void *p) {
-  char bytes_512[512];
 
+  fprintf(stderr, "Starting mp3_player_task");
+  char bytes_512[512];
+  spi0_init();
   while (1) {
+
     xQueueReceive(Q_songdata, &bytes_512[0], portMAX_DELAY);
     for (int i = 0; i < sizeof(bytes_512); i++) {
-      while (!mp3_decoder_needs_data()) {
+      while (!get_data_request_signal()) {
         vTaskDelay(1);
       }
-
-      spi_send_to_mp3_decoder(bytes_512[i]);
+      // Set Data CS before sending bytes
+      sp0_ds();
+      ssp0_exchange_byte(bytes_512[i]);
+      fprintf(stderr, "Exchanging bytes");
     }
   }
 }
+
 
 void main(void) {
   SongQueue = xQueueCreate(1, sizeof(char[32]));
@@ -151,8 +158,9 @@ void main(void) {
   sj2_cli__init();
 
   printf("Creating Tasks...\n");
-  xTaskCreate(mp3_reader_task, "Reader_Task", (2048U * 8 / sizeof(void *)), NULL, PRIORITY_HIGH, NULL);
   // xTaskCreate(empty_task, "Empty_Task", (512U / sizeof(void *)), NULL, PRIORITY_LOW, NULL);
+  //  xTaskCreate(mp3_reader_task, "Reader_Task", 512, NULL, PRIORITY_HIGH, NULL);
+  xTaskCreate(mp3_player_task, "Player_Task", 512, NULL, PRIORITY_HIGH, NULL);
 
   printf("Starting scheduler...\n");
   vTaskStartScheduler();
