@@ -13,10 +13,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <stdio.h>
-#include <string.h>
-
-// Status: Can input sensor values into a file on the SD Card
 static void blink_task(void *params);
 static void uart_task(void *params);
 
@@ -26,6 +22,37 @@ EventBits_t xEventBits;
 
 static gpio_s led0, led1;
 
+FRESULT scan_files(char *path /* Start node to be scanned (***also used as work area***) */
+) {
+  FRESULT res;
+  DIR dir;
+  UINT i;
+  static FILINFO fno;
+
+  res = f_opendir(&dir, path); /* Open the directory */
+  if (res == FR_OK) {
+    for (;;) {
+      res = f_readdir(&dir, &fno); /* Read a directory item */
+      if (res != FR_OK || fno.fname[0] == 0)
+        break;                    /* Break on error or end of dir */
+      if (fno.fattrib & AM_DIR) { /* It is a directory */
+        i = strlen(path);
+        sprintf(&path[i], "/%s", fno.fname);
+        res = scan_files(path); /* Enter the directory */
+        if (res != FR_OK)
+          break;
+        path[i] = 0;
+      } else { /* It is a file. */
+        printf("%s/%s\n", path, fno.fname);
+      }
+    }
+    f_closedir(&dir);
+  }
+
+  return res;
+}
+
+// TASK
 void watchdog_task(void *params) {
   // EventBits_t bitsToWaitFor = (xEventGroup, (1 << 1) | (1 << 2), pdTRUE, pdTRUE, 1000);
   // xEventGroupWaitBits(event group, bits to look at, clearOnExit, waitForAll, ticksToWait)
@@ -35,12 +62,14 @@ void watchdog_task(void *params) {
     vTaskDelay(1000);
     if (xEventGroupWaitBits(xEventGroup, (1 << 1) | (1 << 2), pdTRUE, pdTRUE, 1000)) {
       xEventGroupClearBits(xEventGroup, (1 << 1) | (1 << 2));
-      printf("All bits were found by the watchdog, and have been cleared.\n");
+      // printf("All bits were found by the watchdog, and have been cleared.\n");
     } else {
-      printf("Not all bits were set after 1000 ticks!\n");
+      // printf("Not all bits were set after 1000 ticks!\n");
     }
   }
 }
+
+// SENSOR TASK
 
 static void producer_collect_accelerometer_readings_task(void *params) {
   int readingCount = 0;
@@ -59,7 +88,7 @@ static void producer_collect_accelerometer_readings_task(void *params) {
     readingCount++;
 
     if (readingCount >= 100) {
-      printf("100 Samples collected! Now computing the average... \n");
+      // printf("100 Samples collected! Now computing the average... \n");
       int xTotal = 0, yTotal = 0, zTotal = 0;
 
       for (int i = 0; i < 100; i++) {
@@ -72,9 +101,13 @@ static void producer_collect_accelerometer_readings_task(void *params) {
       int yAvg = yTotal / 100;
       int zAvg = zTotal / 100;
 
-      printf("The average x value: %d\n", xAvg);
-      printf("The average y value: %d\n", yAvg);
-      printf("The average z value: %d\n", zAvg);
+      // printf("The average x value: %d\n", xAvg);
+      // printf("The average y value: %d\n", yAvg);
+      // printf("The average z value: %d\n", zAvg);
+
+      FATFS fs;
+      FRESULT res;
+      char buff[256];
 
       acceleration__axis_data_s avgData;
       avgData.x = xAvg;
@@ -94,40 +127,8 @@ static void producer_collect_accelerometer_readings_task(void *params) {
   }
 }
 
+// FUNCTION
 void write_file_using_fatfs_pi(int valToWrite, FIL file, FRESULT result) {
-
-  //creates a file sensor.txt
-
-
-// basepath include from the directory of sd card and open the file name
-    char path[1000];
-    struct dirent *dp;
-    DIR *dir = opendir(basePath);
-
-    // Unable to open directory stream
-    if (!dir)
-        return;
-
-    while ((dp = readdir(dir)) != NULL)
-    {
-        if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0)
-        {
-            printf("%s\n", dp->d_name);
-
-            // Construct new path from our base path
-            strcpy(path, basePath);
-            strcat(path, "/");
-            strcat(path, dp->d_name);
-
-            listFilesRecursively(path);
-        }
-    }
-
-    closedir(dir);
-
-
-  //basepath of the example is the path of the main folder
-
   const char *filename = "sensor.txt";
 
   UINT bytes_written = 2;
@@ -137,8 +138,6 @@ void write_file_using_fatfs_pi(int valToWrite, FIL file, FRESULT result) {
   // FRESULT result = f_open(&file, "sensor.txt", (FA_WRITE | FA_CREATE_ALWAYS));
   if (FR_OK == result) {
     char string[64] = "";
-
-    // note: Rather than valToWrite... maybe input the file names instead
     // printf("Right before sprintf, X Average: %i\n", valToWrite);
     printf("Right before sprintf, Time: %i, X val: %i\n", time, valToWrite);
 
@@ -163,30 +162,39 @@ void write_file_using_fatfs_pi(int valToWrite, FIL file, FRESULT result) {
   }
 } // Task at PRIORITY_MEDIUM
 
+// CONSUMER TASK
 void consumer(void *p) {
   printf("Consumer task starting  \n ");
   int x;
   char string[64] = "helloooo";
   FIL file; // File handle
+            // FRESULT result = f_open(&file, "sensor.txt", (FA_WRITE | FA_OPEN_APPEND));
 
-  // for creating a file sensor.txt
-  FRESULT result = f_open(&file, "sensor.txt", (FA_WRITE | FA_OPEN_APPEND));
+  FATFS fs;
+  FRESULT res;
+  char buff[256];
 
-  // file = f_open("sensor.txt", "a");
-  write_file_using_fatfs_pi(123, file, result);
+  res = f_mount(&fs, "", 1);
+  if (res == FR_OK) {
+    strcpy(buff, "/");
+    res = scan_files(buff);
+  }
+
+  // write_file_using_fatfs_pi(123, file, result);
   while (1) {
     // Printing a message before xQueueReceive()
     printf(" \n");
-    printf("Before receiving \n ");
+    // printf("Before receiving \n ");
     xQueueReceive(sensor_queue, &x, portMAX_DELAY); // Printing a message after xQueueReceive()
-    printf("CONSUMER: received %d from queue \n", x);
-    write_file_using_fatfs_pi(x, file, result);
+    // printf("CONSUMER: received %d from queue \n", x);
+
+    // write_file_using_fatfs_pi(x, file, result);
+
     xEventGroupSetBits(xEventGroup, (1 << 2));
   }
 }
 
 int main(void) {
-
   led0 = board_io__get_led0();
   led1 = board_io__get_led1();
 
@@ -199,7 +207,7 @@ int main(void) {
     printf("EVENT GROUP NOT CREATED, ABORTING!\n");
     return 0;
   } else {
-    printf("Event group successfully created.\n");
+    printf("Event Group succesfully created.\n");
   }
 
   xTaskCreate(producer_collect_accelerometer_readings_task, "Producer", 1024U, (void *)&led0, PRIORITY_MEDIUM, NULL);
