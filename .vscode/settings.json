@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "lpc40xx.h": "c",
+        "queue.h": "c",
+        "freertos.h": "c",
+        "sj2_cli.h": "c",
+        "cli_handlers.h": "c",
+        "app_cli.h": "c",
+        "sl_string.h": "c",
+        "portable.h": "c",
+        "portmacro.h": "c",
+        "acceleration.h": "c",
+        "ff.h": "c",
+        "typeinfo": "c",
+        "board_io.h": "c",
+        "delay.h": "c",
+        "gpio_int.h": "c"
+    }
+}
