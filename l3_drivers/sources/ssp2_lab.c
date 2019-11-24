@@ -69,10 +69,25 @@ uint8_t ssp2L__exchange_byte(uint8_t data_out) {
 }
 
 uint8_t ssp0__exchange_byte(uint8_t data_out) {
+  LPC_SSP0->CR1 = 0;
+  LPC_SSP0->CR0 = (7 << 0);
+  LPC_SSP0->CR1 = (1 << 1);
   LPC_SSP0->DR = data_out;
 
   while (LPC_SSP0->SR & (1 << 4)) {
   } // read SR Busy bit
 
   return (uint8_t)LPC_SSP0->DR & 0xFF;
+}
+
+uint16_t ssp0__exchange_half(uint16_t data_out) {
+  LPC_SSP0->CR1 = 0;
+  LPC_SSP0->CR0 = (15 << 0);
+  LPC_SSP0->CR1 = (1 << 1);
+  LPC_SSP0->DR = data_out;
+
+  while (LPC_SSP0->SR & (1 << 4)) {
+  } // read SR Busy bit
+
+  return (uint16_t)LPC_SSP0->DR & 0xFFFF;
 }
