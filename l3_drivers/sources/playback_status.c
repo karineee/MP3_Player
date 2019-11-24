@@ -56,3 +56,14 @@ void playback__clear_pause() {
   status.inPause = false;
   xSemaphoreGive(lock);
 }
+
+void playback__toggle_pause() {
+  xQueueSemaphoreTake(lock, portMAX_DELAY);
+  if (status.inPause) {
+    status.inPause = false;
+  } else {
+    status.inPause = true;
+  }
+
+  xSemaphoreGive(lock);
+}

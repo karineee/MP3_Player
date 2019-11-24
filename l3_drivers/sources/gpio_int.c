@@ -1,7 +1,7 @@
+
 #include "gpio_int.h"
 #include "gpio.h"
 #include "lpc40xx.h"
-#include "uart.h"
 
 static void gpio__halt_handler(void) {
 
@@ -79,7 +79,7 @@ void gpio0__attach_interrupt(uint32_t pin, gpio_interrupt_e interrupt_type, func
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio__interrupt_dispatcher);
 }
 
-void gpio2__attach_interupt(uint32_t pin, gpio_interrupt_e interrupt_type, function_pointer_t callback) {
+void gpio2__attach_interrupt(uint32_t pin, gpio_interrupt_e interrupt_type, function_pointer_t callback) {
 
   if (interrupt_type == GPIO_INTR__FALLING_EDGE) {
     LPC_GPIOINT->IO2IntEnF |= (1 << pin);
@@ -236,7 +236,7 @@ uint8_t gpio2_find_interrupt_pin() {
 gpio_s gpio_find_interrupt_source() {
   if (LPC_GPIOINT->IntStatus & (1 << 0)) {
     return gpio__construct(0, gpio0_find_interrupt_pin());
-  } else if (LPC_GPIOINT->IntStatus & (1 << 2)) {
+  } else {
     return gpio__construct(2, gpio2_find_interrupt_pin());
   }
 }
@@ -262,10 +262,10 @@ void gpio__interrupt_dispatcher(void) {
 
     if (LPC_GPIOINT->IO2IntStatF) {
       // attach from callbacksF
-      function_pointer_t attached_user_handler = gpio2_callbacksF[pin_that_generated_interrupt.pin_number];
+      attached_user_handler = gpio2_callbacksF[pin_that_generated_interrupt.pin_number];
     } else if (LPC_GPIOINT->IO2IntStatR) {
       // attach from callbacksR
-      function_pointer_t attached_user_handler = gpio2_callbacksR[pin_that_generated_interrupt.pin_number];
+      attached_user_handler = gpio2_callbacksR[pin_that_generated_interrupt.pin_number];
     }
     attached_user_handler();
   }

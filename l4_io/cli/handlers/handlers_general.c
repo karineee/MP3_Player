@@ -136,11 +136,8 @@ app_cli_status_e cli__pause(app_cli__argument_t argument, sl_string_t user_input
 
   void *unused_cli_param = NULL;
 
-  if (playback__is_playing() && !playback__is_paused()) {
-    playback__set_pause();
-
-  } else if (playback__is_playing() && playback__is_paused()) {
-    playback__clear_pause();
+  if (playback__is_playing()) {
+    playback__toggle_pause();
   }
   return APP_CLI_STATUS__SUCCESS;
 }

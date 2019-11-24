@@ -25,3 +25,5 @@ void playback__clear_playing();
 
 void playback__set_pause();
 void playback__clear_pause();
+
+void playback__toggle_pause();
