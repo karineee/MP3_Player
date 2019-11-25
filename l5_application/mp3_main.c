@@ -14,6 +14,8 @@
 
 #include "char_map.h"
 #include "queue_manager.h"
+
+#define MAX_VOLUME 0x5F
 QueueHandle_t Song_Q, Data_Q;
 QueueHandle_t volume_direction;
 
@@ -188,14 +190,13 @@ void read_pause_task(void *params) {
 void volume_control_task(void *params) {
   uint16_t volume;
   bool CnotCounterC;
-  volume = reset_volume;
-  uint8_t channel_volume;
+  uint8_t channel_volume = reset_volume;
 
   while (1) {
     xQueueReceive(volume_direction, &CnotCounterC, portMAX_DELAY);
 
     if (CnotCounterC) {
-      if (channel_volume > 0x00) {
+      if (channel_volume > MAX_VOLUME) {
         channel_volume -= 0x01;
       }
     } else {
