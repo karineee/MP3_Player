@@ -108,7 +108,7 @@ void read_song_name_task(void *params) {
         while (playback__is_paused()) {
           vTaskDelay(1);
         }
-
+        
         xQueueSend(Data_Q, bytes_to_send, portMAX_DELAY);
       }
 
@@ -193,6 +193,7 @@ void volume_control_task(void *params) {
   uint8_t channel_volume = reset_volume;
 
   while (1) {
+    
     xQueueReceive(volume_direction, &CnotCounterC, portMAX_DELAY);
 
     if (CnotCounterC) {
