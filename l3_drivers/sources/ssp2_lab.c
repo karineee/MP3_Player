@@ -91,3 +91,28 @@ uint16_t ssp0__exchange_half(uint16_t data_out) {
 
   return (uint16_t)LPC_SSP0->DR & 0xFFFF;
 }
+
+uint8_t ssp1__exchange_byte(uint8_t data_out) {
+  LPC_SSP1->CR1 = 0;
+  LPC_SSP1->CR0 = (7 << 0);
+  LPC_SSP1->CR1 = (1 << 1);
+  LPC_SSP1->DR = data_out;
+
+  while (LPC_SSP1->SR & (1 << 4)) {
+    fprintf(stderr, "waiting on SR busy bit...\n");
+  } // read SR Busy bit
+
+  return (uint8_t)LPC_SSP1->DR & 0xFF;
+}
+
+uint16_t ssp1__exchange_half(uint16_t data_out) {
+  LPC_SSP1->CR1 = 0;
+  LPC_SSP1->CR0 = (15 << 0);
+  LPC_SSP1->CR1 = (1 << 1);
+  LPC_SSP1->DR = data_out;
+
+  while (LPC_SSP1->SR & (1 << 4)) {
+  } // read SR Busy bit
+
+  return (uint16_t)LPC_SSP1->DR & 0xFFFF;
+}
