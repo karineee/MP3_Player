@@ -26,7 +26,7 @@ SemaphoreHandle_t Next_Signal;
 SemaphoreHandle_t Prev_Signal;
 SemaphoreHandle_t Decoder_lock;
 
-char tracklist[5][50] = {"again.mp3", "avalon.mp3", "another me.mp3", "25 or 6 to 4.mp3", "all the cats join in.mp3"};
+char [5][50] = {"again.mp3", "avalon.mp3", "another me.mp3", "25 or 6 to 4.mp3", "all the cats join in.mp3"};
 
 gpio_s data_select, control_select, data_request;
 uint16_t reset_volume;
@@ -257,8 +257,7 @@ void tracklist_task(void *params) {
     fprintf(stderr, "\n");
   }
 
-  // Next step: To be made dynamic
-  /*
+  
     FIL mp3file;
     UINT bytes_read, total_read;
 
@@ -287,7 +286,40 @@ void tracklist_task(void *params) {
       }
       f_close(&mp3file);
     }
-    vTaskDelay(1000);*/
+    vTaskDelay(1000);
+  
+  
+  /* FOR DYNAMIC WAY: 
+ 
+FRESULT scan_files(char *path /* Start node to be scanned (***also used as work area***)
+) {
+  FRESULT res;
+  DIR dir;
+  UINT i;
+  static FILINFO fno;
+
+  res = f_opendir(&dir, path); 
+  if (res == FR_OK) {
+    for (;;) {
+      res = f_readdir(&dir, &fno);
+      if (res != FR_OK || fno.fname[0] == 0)
+        break;                    
+      if (fno.fattrib & AM_DIR) { 
+        i = strlen(path);
+        sprintf(&path[i], "/%s", fno.fname);
+        res = scan_files(path); 
+        if (res != FR_OK)
+          break;
+        path[i] = 0;
+      } else { 
+        printf("%s/%s\n", path, fno.fname);
+      }
+    }
+    f_closedir(&dir);
+  }
+
+  return res;
+}*/
 }
 
 void read_song_name_task(void *params) {
