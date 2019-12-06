@@ -174,15 +174,31 @@ void read_prev_next_task(void *params) {
           current_song_num++;
           fprintf(stderr, "Next song is: %i\n", current_song_num);
           // xQueueSend(Song_Q, &tracklist[current_song_num], portMAX_DELAY);
-        }*/
-        //***NEXT SONG***
-        // if the signal is H
-        // after a byte of the song is read...increments and tries to play next song
-        if (playback__is_paused() && next_sig != 0) {
+        }
+        //***PREV SONG***
+        if (playback__is_prev() && next_sig != 0) {
 
           // vTaskDelay(1);
           // keeps sending and playing all the songs
           current_song_num--;
+          fprintf(stderr, "Next song is: %i\n", current_song_num);
+
+          xQueueSend(Song_Q, &tracklist[current_song_num], portMAX_DELAY);
+          next_sig = 0;
+
+          break;
+        }
+        
+        
+        */
+        //***NEXT SONG***
+        // if the signal is H
+        // after a byte of the song is read...increments and tries to play next song
+        if (playback__is_next() && next_sig != 0) {
+
+          // vTaskDelay(1);
+          // keeps sending and playing all the songs
+          current_song_num++;
           fprintf(stderr, "Next song is: %i\n", current_song_num);
 
           xQueueSend(Song_Q, &tracklist[current_song_num], portMAX_DELAY);
