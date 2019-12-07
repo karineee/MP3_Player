@@ -99,7 +99,6 @@ uint8_t ssp1__exchange_byte(uint8_t data_out) {
   LPC_SSP1->DR = data_out;
 
   while (LPC_SSP1->SR & (1 << 4)) {
-    fprintf(stderr, "waiting on SR busy bit...\n");
   } // read SR Busy bit
 
   return (uint8_t)LPC_SSP1->DR & 0xFF;

@@ -11,63 +11,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "FreeRTOS.h"
+#include "mp3_driver.h"
 
-#include "board_io.h"
-#include "common_macros.h"
-#include "ff.h"
-#include "gpio.h"
-#include "queue.h"
-#include "queue_manager.h"
-#include "sj2_cli.h"
-#include "task.h"
-#include <stdio.h>
-
-#include "FreeRTOS.h"
-#include "board_io.h"
 #include "char_map.h"
 #include "common_macros.h"
-#include "ff.h"
-#include "gpio.h"
 #include "gpio_int.h"
-#include "queue.h"
-#include "queue_manager.h"
-#include "sj2_cli.h"
 #include "ssp2_lab.h"
-#include "task.h"
 #include <stdbool.h>
-#include <stdio.h>
 
 #define MAX_VOLUME 0x5F
-QueueHandle_t Song_Q, Data_Q;
-QueueHandle_t volume_direction;
+#define reset_volume 0x7070
+#define data_size 1024
+
+QueueHandle_t Song_Q, Data_Q, button2_Q;
+QueueHandle_t volume_direction, scroll_direction;
 
 SemaphoreHandle_t Pause_Signal;
-SemaphoreHandle_t Next_Signal;
-SemaphoreHandle_t Prev_Signal;
+SemaphoreHandle_t Button2_Signal;
 SemaphoreHandle_t Decoder_lock;
 
-gpio_s data_select, control_select, data_request;
-uint16_t reset_volume;
-
+gpio_s data_request;
+bool change_song;
 void read_song_name_task(void *params);
 void send_data_to_decode(void *params);
 void read_pause_task(void *params);
 void volume_control_task(void *params);
 void lcd_task(void *params);
-void read_prev_next_task(void *params);
+void read_button2_task(void *params);
 
 void send_pause_signal_isr(void) {
   LPC_GPIOINT->IO2IntClr |= (1 << 0);
   xSemaphoreGiveFromISR(Pause_Signal, NULL);
 };
-void send_prev_signal_isr(void) {
-  LPC_GPIOINT->IO2IntClr |= (1 << 31);
-  xSemaphoreGiveFromISR(Prev_Signal, NULL);
-};
-void send_next_signal_isr(void) {
-  LPC_GPIOINT->IO2IntClr |= (1 << 8);
-  xSemaphoreGiveFromISR(Next_Signal, NULL);
+
+void send_button2_signal_isr(void) {
+  LPC_GPIOINT->IO0IntClr |= (1 << 6);
+  xSemaphoreGiveFromISR(Button2_Signal, NULL);
 };
 
 void volume_change_isr(void) {
@@ -78,74 +57,69 @@ void volume_change_isr(void) {
   xQueueSendToBackFromISR(volume_direction, &direction, NULL);
 }
 
+void scroll_change_isr(void) {
+  LPC_GPIOINT->IO0IntClr |= (1 << 7);
+  bool E = LPC_GPIO0->PIN & (1 << 7);
+  bool F = LPC_GPIO0->PIN & (1 << 8);
+  bool direction = E != F;
+  xQueueSendToBackFromISR(scroll_direction, &direction, NULL);
+}
+
 int main(void) {
   Song_Q = xQueueCreate(1, sizeof(name));
-  Data_Q = xQueueCreate(3, sizeof(char[512]));
+  Data_Q = xQueueCreate(3, sizeof(char[data_size]));
   volume_direction = xQueueCreate(20, sizeof(bool));
-
-  reset_volume = 0x7070;
+  scroll_direction = xQueueCreate(10, sizeof(bool));
+  button2_Q = xQueueCreate(1, sizeof(uint8_t));
+  change_song = false;
 
   playback_status_init();
   sj2_cli__init();
 
   Pause_Signal = xSemaphoreCreateBinary();
-  Next_Signal = xSemaphoreCreateBinary();
-  Prev_Signal = xSemaphoreCreateBinary();
+  Button2_Signal = xSemaphoreCreateBinary();
   Decoder_lock = xSemaphoreCreateMutex();
 
   gpio_s pause_button = gpio__construct_as_input(GPIO__PORT_2, 0); // pin # to be same as attach interrupt and I02IntClr
-  gpio_s prev_button = gpio__construct_as_input(GPIO__PORT_1, 31);
-  gpio_s next_button = gpio__construct_as_input(GPIO__PORT_0, 8);
-  data_select = gpio__construct_as_output(GPIO__PORT_2, 7);
-  control_select = gpio__construct_as_output(GPIO__PORT_2, 8);
   data_request = gpio__construct_as_input(GPIO__PORT_2, 6);
-
+  gpio_s button2 = gpio__construct_as_input(GPIO__PORT_0, 6);
 
   gpio_s E, F;
-  E = gpio__construct_as_input(GPIO__PORT_0, 7); //for next button  = third pin
-  F = gpio__construct_as_input(GPIO__PORT_0, 9); //for next button = middle pin
+  E = gpio__construct_as_input(GPIO__PORT_0, 7); // for next button  = third pin
+  F = gpio__construct_as_input(GPIO__PORT_0, 8); // for next button = middle pin
 
+  /*Never Used
   gpio_s C, D;
-  C = gpio__construct_as_input(GPIO__PORT_1, 30); //for prev button = third pin
-  D = gpio__construct_as_input(GPIO__PORT_1, 20); //for prev button = middle pin
+  C = gpio__construct_as_input(GPIO__PORT_1, 30); // for prev button = third pin
+  D = gpio__construct_as_input(GPIO__PORT_1, 20); // for prev button = middle pin
+  */
 
   gpio_s A, B;
   A = gpio__construct_as_input(GPIO__PORT_2, 1); // for pause button = third pin
   B = gpio__construct_as_input(GPIO__PORT_2, 2); // for pause button = middle pin
 
-
   gpio2__attach_interrupt(1, GPIO_INTR__RISING_EDGE, volume_change_isr);
   gpio2__attach_interrupt(1, GPIO_INTR__FALLING_EDGE, volume_change_isr);
 
-  gpio2__attach_interrupt(0, GPIO_INTR__RISING_EDGE, send_pause_signal_isr);
-  gpio2__attach_interrupt(31, GPIO_INTR__RISING_EDGE, send_prev_signal_isr);
-  gpio2__attach_interrupt(8, GPIO_INTR__RISING_EDGE, send_next_signal_isr);
+  /* Uncomment when ready
+  gpio0__attach_interrupt(7, GPIO_INTR__RISING_EDGE, scroll_change_isr);
+  gpio0__attach_interrupt(7, GPIO_INTR__FALLING_EDGE, scroll_change_isr);
+  */
 
-  xTaskCreate(read_song_name_task, "Read_Song", 2048, NULL, 2, NULL);
-  xTaskCreate(send_data_to_decode, "Send_Song", 2048, NULL, 2, NULL);
-  xTaskCreate(read_pause_task, "Pause Task", 1024, NULL, 2, NULL);
-  xTaskCreate(volume_control_task, "Volume Task", 1024, NULL, 2, NULL);
+  gpio2__attach_interrupt(0, GPIO_INTR__RISING_EDGE, send_pause_signal_isr);
+  gpio0__attach_interrupt(6, GPIO_INTR__RISING_EDGE, send_button2_signal_isr);
+
+  xTaskCreate(read_song_name_task, "Read_Song", data_size + 512, NULL, 2, NULL);
+  xTaskCreate(send_data_to_decode, "Send_Song", data_size + 512, NULL, 2, NULL);
+  xTaskCreate(read_pause_task, "Pause Task", 512, NULL, 3, NULL);
+  xTaskCreate(volume_control_task, "Volume Task", 512, NULL, 3, NULL);
 
   // xTaskCreate(lcd_task, "Lcd Task", 2048, NULL, 2, NULL);
-  // xTaskCreate(read_prev_next_task, "Previous and Next Task", 2048, NULL, 2, NULL);
+  xTaskCreate(read_button2_task, "Button 2 Task", 512, NULL, 4, NULL);
 
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 1;
-}
-
-void read_prev_next_task(void *params) {
-  bool next_signal = false;
-
-  // if signal received then send it to the queue
-  if (next_signal) {
-
-    // send next song to the queue
-
-    //  xQueueReceive(Song_Q, &name, portMAX_DELAY);
-  }
-
-
 }
 
 void lcd_task(void *params) {
@@ -192,7 +166,7 @@ void read_song_name_task(void *params) {
   FRESULT result;
   UINT file_size;
 
-  char bytes_to_send[512];
+  char bytes_to_send[data_size];
 
   while (1) {
 
@@ -206,13 +180,19 @@ void read_song_name_task(void *params) {
       total_read = 0;
 
       while (file_size > total_read) {
-        f_read(&mp3file, &bytes_to_send, 512, &bytes_read);
+        while (playback__is_paused()) {
+          vTaskDelay(1);
+        }
+
+        // take mutex
+        if (change_song) {
+          change_song = false;
+          break;
+        }
+        // give mutex
+        f_read(&mp3file, &bytes_to_send, data_size, &bytes_read);
         total_read += bytes_read;
 
-        while (playback__is_paused()) {
-          vTaskDelay(1); // originally was 1
-        }
-        
         xQueueSend(Data_Q, bytes_to_send, portMAX_DELAY);
       }
 
@@ -223,64 +203,32 @@ void read_song_name_task(void *params) {
   }
 }
 
-void mp3_decoder_hardware_reset() {
-  gpio_s reset = gpio__construct_as_output(GPIO__PORT_2, 9);
-  gpio__set(reset);
-  gpio__reset(reset);
-  vTaskDelay(100);
-  gpio__set(reset);
-}
-
 void send_data_to_decode(void *params) {
 
-  char bytes[512];
-  ssp0__init(24);
+  char bytes[data_size];
 
-  mp3_decoder_hardware_reset();
-  gpio__reset(data_select);
-  gpio__set(control_select);
-  while (!gpio__get(data_request)) {
-    vTaskDelay(1);
-  }
-
-  // volume changing
-  gpio__set(data_select);
-  gpio__reset(control_select);
-
-  ssp0__exchange_byte(0x02);
-  ssp0__exchange_byte(0x0B);
-
-  ssp0__exchange_half(reset_volume);
-
-  gpio__set(control_select);
-  // volume changing
-  while (!gpio__get(data_request)) {
-    vTaskDelay(1);
-  }
+  ssp0__init(1);
+  decoder__init(reset_volume);
+  ssp0__init(4);
 
   int index;
   while (1) {
-
+    while (playback__is_paused()) {
+      vTaskDelay(1);
+    }
     xQueueReceive(Data_Q, bytes, portMAX_DELAY);
 
-    gpio__reset(data_select);
-    gpio__set(control_select);
-
-    while (!gpio__get(data_request)) {
-    }
-
-    for (int i = 0; i < 16; ++i) {
+    for (int i = 0; i < data_size / 32; ++i) {
+      while (!gpio__get(data_request)) {
+        vTaskDelay(1);
+      }
       for (int j = 0; j < 32; ++j) {
         index = i * 32 + j;
         xSemaphoreTake(Decoder_lock, portMAX_DELAY);
-        ssp0__exchange_byte(bytes[index]);
+        decoder__write_data(bytes[index]);
         xSemaphoreGive(Decoder_lock);
       }
-
-      while (!gpio__get(data_request)) {
-      }
     }
-    vTaskDelay(1);
   }
 }
 
@@ -291,18 +239,61 @@ void read_pause_task(void *params) {
     playback__toggle_pause();
   }
 }
-void read_next_task(void *params) {
 
+void read_button2_task(void *params) {
+  uint8_t state = 0;
   while (1) {
-    xSemaphoreTake(Next_Signal, portMAX_DELAY);
-    playback__toggle_next();
+    state = 0;
+    if (xSemaphoreTake(Button2_Signal, portMAX_DELAY)) {
+      state = 1;
+      if (xSemaphoreTake(Button2_Signal, 400)) {
+        state = 2;
+        if (xSemaphoreTake(Button2_Signal, 400)) {
+          state = 3;
+        }
+      }
+    }
+    xQueueSend(button2_Q, &state, portMAX_DELAY);
   }
 }
-void read_prev_task(void *params) {
+
+void proccess_button2(void) {
+  uint8_t state;
 
   while (1) {
-    xSemaphoreTake(Prev_Signal, portMAX_DELAY);
-    playback__toggle_prev();
+    xQueueReceive(button2_Q, &state, portMAX_DELAY);
+    if (state == 1) { // 1 button press, play selected song.
+
+      /*logic to get selected song name
+
+      */
+
+      // then
+      // xQueueSend(Song_Q, &name, portMAX_DELAY);
+
+    } else if (state == 2) { // 2 button press, play next song
+      /*logic to get next song name
+
+     */
+
+      // then
+      // xQueueSend(Song_Q, &name, portMAX_DELAY);
+
+    } else if (state = 3) { // 3 button press, play previous song
+      /*logic to get previous song name
+
+     */
+
+      // then
+      // xQueueSend(Song_Q, &name, portMAX_DELAY);
+
+    } else {
+      // if received state makes it into here, do nothing
+      // invalid state
+    }
+    // take mutex
+    change_song = true;
+    // give mutex
   }
 }
 
@@ -312,7 +303,7 @@ void volume_control_task(void *params) {
   uint8_t channel_volume = reset_volume;
 
   while (1) {
-    
+
     xQueueReceive(volume_direction, &CnotCounterC, portMAX_DELAY);
 
     if (CnotCounterC) {
@@ -327,19 +318,7 @@ void volume_control_task(void *params) {
     volume = (channel_volume << 8) | (channel_volume << 0);
 
     xSemaphoreTake(Decoder_lock, portMAX_DELAY);
-    gpio__set(data_select);
-    gpio__reset(control_select);
-
-    ssp0__exchange_byte(0x02);
-    ssp0__exchange_byte(0x0B);
-
-    ssp0__exchange_half(volume);
-
-    gpio__set(control_select);
-    gpio__reset(data_select);
-
-    while (!gpio__get(data_request)) {
-    }
+    decoder__write_reg(0x0B, volume);
     xSemaphoreGive(Decoder_lock);
   }
 }

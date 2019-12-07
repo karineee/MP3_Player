@@ -27,3 +27,8 @@ void playback__set_pause();
 void playback__clear_pause();
 
 void playback__toggle_pause();
+
+void decoder__init(uint16_t reset_volume);
+void decoder__write_reg(uint8_t register, uint16_t data);
+void decoder__write_data(uint8_t data);
+void decoder__wait_for_request(void);

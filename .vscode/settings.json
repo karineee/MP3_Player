@@ -14,6 +14,7 @@
         "typeinfo": "c",
         "board_io.h": "c",
         "delay.h": "c",
-        "gpio_int.h": "c"
+        "gpio_int.h": "c",
+        "queue_manager.h": "c"
     }
 }
