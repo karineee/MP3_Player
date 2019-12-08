@@ -9,9 +9,11 @@
 #include <time.h>
 
 // TODO:
-//      -Complete Alphabet Library
+//      -Complete Alphabet Library DONE
 //      -Rewrite to work for SSP0
-//      -lcd_putString() function
+//      -lcd_putString() function  DONE
+//      -Print tracklist to LCD
+//          -Functions to print to each bank separately (ex: lcd_printstring_bank_0(char*) )
 
 // RESET = P2_0
 // BACKLIGHT = P2_1
