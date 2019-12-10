@@ -2,7 +2,7 @@
 #include "FreeRTOS.h"
 #include "gpio.h"
 #include "semphr.h"
-#include "ssp2_lab.h"
+#include "ssp_lab.h"
 #include <stdbool.h>
 #include <string.h>
 
