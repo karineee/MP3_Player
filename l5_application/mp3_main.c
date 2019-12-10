@@ -11,12 +11,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "PCD8544_SPI2.h"
 #include "mp3_driver.h"
 
 #include "char_map.h"
 #include "common_macros.h"
 #include "gpio_int.h"
-#include "ssp2_lab.h"
+#include "ssp_lab.h"
 #include <stdbool.h>
 
 #define MAX_VOLUME 0x5F
@@ -30,6 +31,10 @@ SemaphoreHandle_t Pause_Signal;
 SemaphoreHandle_t Button2_Signal;
 SemaphoreHandle_t Decoder_lock;
 
+// char tracklist[5][32] = {"again.mp3", "avalon.mp3", "another me.mp3", "25 or 6 to 4.mp3", "all the cats join
+// in.mp3"};
+char tracklist[5][32] = {"its working", "new shit", "another me.mp3", "25 or 6 to 4.mp3", "all the cats join in.mp3"};
+
 gpio_s data_request;
 bool change_song;
 void read_song_name_task(void *params);
@@ -38,6 +43,7 @@ void read_pause_task(void *params);
 void volume_control_task(void *params);
 void lcd_task(void *params);
 void read_button2_task(void *params);
+void lcd_controller_task(void *p);
 
 void send_pause_signal_isr(void) {
   LPC_GPIOINT->IO2IntClr |= (1 << 0);
@@ -113,7 +119,7 @@ int main(void) {
   xTaskCreate(send_data_to_decode, "Send_Song", data_size + 512, NULL, 2, NULL);
   xTaskCreate(read_pause_task, "Pause Task", 512, NULL, 3, NULL);
   xTaskCreate(volume_control_task, "Volume Task", 512, NULL, 3, NULL);
-
+  xTaskCreate(lcd_controller_task, "LCD_Controller", 512, NULL, 3, NULL);
   // xTaskCreate(lcd_task, "Lcd Task", 2048, NULL, 2, NULL);
   xTaskCreate(read_button2_task, "Button 2 Task", 512, NULL, 4, NULL);
 
@@ -320,5 +326,70 @@ void volume_control_task(void *params) {
     xSemaphoreTake(Decoder_lock, portMAX_DELAY);
     decoder__write_reg(0x0B, volume);
     xSemaphoreGive(Decoder_lock);
+  }
+}
+
+void lcd_controller_task(void *p) {
+  lcd_setup_from_arduino();
+
+  fprintf(stderr, "Setup should be complete\n");
+
+  int currentIndex = 0;
+  bool backwards = false;
+
+  // TODO: -Attach these values to existing code
+  bool playstatus = false;
+  int vol = 8;
+
+  xSemaphoreGive(Decoder_lock);
+
+  while (1) {
+    if (xSemaphoreTake(Decoder_lock, portMAX_DELAY)) {
+      // print the row above highlighted row
+      if (currentIndex == 0) {
+        lcd_print_bank(0, " ");
+      } else {
+        lcd_print_bank(0, tracklist[currentIndex - 1]);
+      }
+
+      // print current row
+      lcd_print_bank(1, tracklist[currentIndex]);
+
+      // print subsequent rows
+      if (tracklist[currentIndex + 1]) {
+        lcd_print_bank(2, tracklist[currentIndex + 1]);
+      }
+      if (tracklist[currentIndex + 2]) {
+        lcd_print_bank(3, tracklist[currentIndex + 2]);
+      }
+
+      lcd_print_bank(4, "--------------");
+
+      // print status
+      // lcd_print_status_bank(playstatus, vol)
+      lcd_print_status_bank(playstatus, vol);
+
+      xSemaphoreGive(Decoder_lock);
+    }
+    vTaskDelay(5000);
+
+    if (!backwards) {
+      currentIndex++;
+      vol = 55;
+    }
+    if (backwards) {
+      currentIndex--;
+      vol = 9;
+    }
+    if (currentIndex >= 5) {
+      backwards = true;
+      currentIndex = 3;
+      vol = 0;
+    }
+    if (currentIndex <= -1) {
+      backwards = false;
+      currentIndex = 1;
+      vol = 100;
+    }
   }
 }
