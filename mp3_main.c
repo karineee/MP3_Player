@@ -13,12 +13,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 //#include "ssp2_lab.h"
+#include "PCD8544_SPI2.h"
 #include <stdbool.h>
 
 #define MAX_VOLUME 0x5F
 #define reset_volume 0x7070
 #define data_size 1024
 int current_song_num = 0;
+int currentIndex = 0;
+gpio_s flash_select;
 
 QueueHandle_t Song_Q, Data_Q, button2_Q;
 QueueHandle_t volume_direction, scroll_direction;
@@ -35,6 +38,7 @@ void read_pause_task(void *params);
 void volume_control_task(void *params);
 void lcd_task(void *params);
 void read_button2_task(void *params);
+void lcd_controller_task(void *params);
 void process_button2(void *params);
 
 void send_pause_signal_isr(void) {
@@ -73,6 +77,7 @@ int main(void) {
   change_song = false;
 
   playback_status_init();
+  flash_select = gpio__construct_as_output(GPIO__PORT_2, 10);
   sj2_cli__init();
 
   Pause_Signal = xSemaphoreCreateBinary();
@@ -119,15 +124,69 @@ int main(void) {
   xTaskCreate(volume_control_task, "Volume Task", 512, NULL, 3, NULL);
 
   // xTaskCreate(lcd_task, "Lcd Task", 2048, NULL, 2, NULL);
-  xTaskCreate(read_button2_task, "Button 2 Task", 512, NULL, 4, NULL);
-  xTaskCreate(process_button2, "Prev and Next Task", 512, NULL, 4, NULL);
+  // xTaskCreate(read_button2_task, "Button 2 Task", 512, NULL, 4, NULL);
+  // xTaskCreate(process_button2, "Prev and Next Task", 512, NULL, 4, NULL);
+  //xTaskCreate(lcd_controller_task, "LCD Controller Task", 512, NULL, 4, NULL);
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 1;
 }
 
-char tracklist[5][50] = {"Centuries.mp3", "Chase Me.mp3", "Copycat.mp3", "example.mp3",          "First Love.mp3",
+char tracklist[9][50] = {"Centuries.mp3", "Chase Me.mp3", "Copycat.mp3", "example.mp3",          "First Love.mp3",
                          "test.mp3",      "test2.mp3",    "test3.mp3",   "Thnks fr th Mmrs.mp3", "You and I.mp3"};
+
+void lcd_controller_task(void *p) {
+  lcd_setup_from_arduino();
+  fprintf(stderr, "Setup should be complete\n");
+  bool backwards = false;
+  // TODO: -Attach these values to existing code
+  bool playstatus = false;
+  int vol = 8;
+  xSemaphoreGive(Decoder_lock);
+  while (1) {
+    if (xSemaphoreTake(Decoder_lock, portMAX_DELAY)) {
+      // print the row above highlighted row
+      if (currentIndex == 0) {
+        lcd_print_bank(0, " ");
+      } else {
+        lcd_print_bank(0, tracklist[currentIndex - 1]);
+      }
+      // print current row
+      lcd_print_bank(1, tracklist[currentIndex]);
+      // print subsequent rows
+      if (tracklist[currentIndex + 1]) {
+        lcd_print_bank(2, tracklist[currentIndex + 1]);
+      }
+      if (tracklist[currentIndex + 2]) {
+        lcd_print_bank(3, tracklist[currentIndex + 2]);
+      }
+      lcd_print_bank(4, "--------------");
+      // print status
+      // lcd_print_status_bank(playstatus, vol)
+      lcd_print_status_bank(playstatus, vol);
+      xSemaphoreGive(Decoder_lock);
+    }
+    vTaskDelay(2000);
+    if (!backwards) {
+      currentIndex++;
+      vol = 55;
+    }
+    if (backwards) {
+      currentIndex--;
+      vol = 9;
+    }
+    if (currentIndex >= 5) {
+      backwards = true;
+      currentIndex = 3;
+      vol = 0;
+    }
+    if (currentIndex <= -1) {
+      backwards = false;
+      currentIndex = 1;
+      vol = 100;
+    }
+  }
+}
 
 void lcd_task(void *params) {
 
@@ -225,6 +284,7 @@ void lcd_task(void *params) {
         f_close(&mp3file);
       }
     }*/
+
   // vTaskDelay(1000);
 }
 
@@ -244,7 +304,7 @@ void read_song_name_task(void *params) {
     printf("Playing Song: %s\n", name);
 
     for (int i = 0; i < 10; i++) {
-      if (name == tracklist[i]) {
+      if (&name == tracklist[i]) {
         // current song #
         current_song_num = i;
         fprintf(stderr, "The input song number is %i", i);
@@ -264,6 +324,7 @@ void read_song_name_task(void *params) {
           vTaskDelay(1);
         }
 
+
         // take mutex
         if (change_song) {
 
@@ -271,6 +332,8 @@ void read_song_name_task(void *params) {
 
           break;
         }
+
+
         // give mutex
         f_read(&mp3file, &bytes_to_send, data_size, &bytes_read);
         total_read += bytes_read;
@@ -354,7 +417,7 @@ void process_button2(void *params) {
       // 1 button press, play selected song from button than CLI
 
       // Logic to get selected song name
-
+      //
       // Idea: Select song name and play
 
       fprintf(stderr, "state 1 \n");
@@ -366,12 +429,16 @@ void process_button2(void *params) {
     } else if (state == 2) { // 2 button press, play next song
                              // logic to get next song name
                              // NEXT SONG: ++ queue
-
       current_song_num++;
-      fprintf(stderr, "Next song is: %i\n", current_song_num);
+      // send signal to LCD
+      currentIndex++;
+
+      if (current_song_num == 10) { // Loops to the first song when pressing next on the last song
+        current_song_num = 0;
+      }
+      fprintf(stderr, "Next song index: %i\n", current_song_num);
 
       xQueueSend(Song_Q, &tracklist[current_song_num], portMAX_DELAY);
-      // next_sig = 0;
 
       fprintf(stderr, "state 2 \n");
 
@@ -384,7 +451,14 @@ void process_button2(void *params) {
       // PREVIOUS SONG: -- queue
 
       current_song_num--;
-      fprintf(stderr, "Next song is: %i\n", current_song_num);
+      currentIndex--;
+
+      // send signal to LCD
+
+      if (current_song_num == -1) { // Loops to the first song when pressing next on the last song
+        current_song_num = 9;
+      }
+      fprintf(stderr, "Next song index: %i\n", current_song_num);
 
       xQueueSend(Song_Q, &tracklist[current_song_num], portMAX_DELAY);
       // next_sig = 0;
